@@ -1,0 +1,86 @@
+@page "/"
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+@using System.Globalization
+
+<PageTitle>Requests</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h4">Replenishment Requests</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Browse, filter and review material replenishment requests.</MudText>
+    </div>
+    <MudButton Href="/requests/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">New Request</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="ReplenishmentStatus?" Label="Status" @bind-Value="_status" Clearable="true">
+                @foreach (var value in Enum.GetValues<ReplenishmentStatus>()) { <MudSelectItem T="ReplenishmentStatus?" Value="@((ReplenishmentStatus?)value)">@value</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="RequestPriority?" Label="Priority" @bind-Value="_priority" Clearable="true">
+                @foreach (var value in Enum.GetValues<RequestPriority>()) { <MudSelectItem T="RequestPriority?" Value="@((RequestPriority?)value)">@value</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_location" Label="Location" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-end">
+            <MudButton FullWidth="true" Variant="Variant.Outlined" OnClick="LoadAsync" StartIcon="@Icons.Material.Filled.Search">Filter</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_result is not null)
+{
+    <MudTable Items="_result.Items" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm">
+        <HeaderContent>
+            <MudTh>Location</MudTh><MudTh>Priority</MudTh><MudTh>Status</MudTh><MudTh>Stock Validation</MudTh><MudTh>Items</MudTh><MudTh>Created</MudTh><MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Location">@context.Location</MudTd>
+            <MudTd DataLabel="Priority"><MudChip Size="Size.Small" Color="@PriorityColor(context.Priority)">@context.Priority</MudChip></MudTd>
+            <MudTd DataLabel="Status"><MudChip Size="Size.Small" Color="@StatusColor(context.Status)">@context.Status</MudChip></MudTd>
+            <MudTd DataLabel="Stock Validation"><MudChip Size="Size.Small" Color="@ValidationColor(context.StockValidationStatus)">@context.StockValidationStatus</MudChip></MudTd>
+            <MudTd DataLabel="Items">@context.ItemCount</MudTd>
+            <MudTd DataLabel="Created">@context.CreatedAtUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</MudTd>
+            <MudTd><MudButton Href="@($"/requests/{context.Id}")" Size="Size.Small" Variant="Variant.Text">Open</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText>No requests match the selected filters.</MudText></NoRecordsContent>
+    </MudTable>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-3">
+        <MudText Typo="Typo.body2">@_result.TotalCount request(s) found</MudText>
+        <MudPagination Count="@Math.Max(1, _result.TotalPages)" @bind-Selected="_page" SelectedChanged="PageChanged" />
+    </MudStack>
+}
+
+@code {
+    private PagedResult<ReplenishmentListItem>? _result;
+    private ReplenishmentStatus? _status;
+    private RequestPriority? _priority;
+    private string? _location;
+    private int _page = 1;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _result = await Api.GetRequestsAsync(_status, _priority, _location, _page, 10); }
+        catch (Exception ex) { Snackbar.Add($"Unable to load requests: {ex.Message}", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    private async Task PageChanged(int page) { _page = page; await LoadAsync(); }
+    private static Color PriorityColor(RequestPriority p) => p switch { RequestPriority.Urgent => Color.Error, RequestPriority.Normal => Color.Warning, _ => Color.Default };
+    private static Color StatusColor(ReplenishmentStatus s) => s switch { ReplenishmentStatus.Approved => Color.Success, ReplenishmentStatus.Fulfilled => Color.Success, ReplenishmentStatus.Rejected => Color.Error, _ => Color.Info };
+    private static Color ValidationColor(StockValidationStatus s) => s switch { StockValidationStatus.Passed => Color.Success, StockValidationStatus.Failed => Color.Error, StockValidationStatus.Pending => Color.Warning, _ => Color.Default };
+}
